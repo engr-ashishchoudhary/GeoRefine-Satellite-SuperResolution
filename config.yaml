@@ -34,6 +34,11 @@ patches:
   output_subdir: "patches"
   index_filename: "patches_index.json"
 
+inference:
+  tile_size: 512
+  tile_overlap: 32
+  scene_id: null
+
 demo_data_contract:
   input: "input/scene.tif"
   sr: "sr/scene_sr.tif"
