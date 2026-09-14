@@ -51,3 +51,8 @@ demo_data_contract:
 validation:
   output_report_filename: "validation_report.json"
   nodata_exclude: true
+
+
+uncertainty:
+  augmentations: ["identity", "hflip", "vflip", "hvflip"]
+  output_report_filename: "uncertainty_report.json"
