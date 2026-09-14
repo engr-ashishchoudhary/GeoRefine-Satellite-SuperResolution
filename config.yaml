@@ -46,3 +46,8 @@ demo_data_contract:
   original_ndvi: "ndvi/original_ndvi.tif"
   sr_ndvi: "ndvi/sr_ndvi.tif"
   metrics: "metrics/metrics.json"
+
+
+validation:
+  output_report_filename: "validation_report.json"
+  nodata_exclude: true
