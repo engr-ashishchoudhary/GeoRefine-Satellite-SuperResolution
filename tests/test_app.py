@@ -1,5 +1,5 @@
 """
-Tests for app.data_adapter and the FastAPI app's foundation endpoints.
+Tests for app.data_adapter and the FastAPI app's endpoints (Phases 10-11).
 """
 from __future__ import annotations
 
@@ -36,6 +36,7 @@ def _base_config(demo_dir):
             "metrics": "metrics/metrics.json",
         },
         "pipeline": {"manifest_filename": "manifest.json"},
+        "visualization": {"stretch_low_percentile": 2.0, "stretch_high_percentile": 98.0},
     }
 
 
@@ -167,3 +168,44 @@ def test_index_page_served(client_with_config):
     response = client.get("/")
     assert response.status_code == 200
     assert "GeoRefine" in response.text
+
+
+def test_api_render_returns_404_when_missing(client_with_config):
+    client, demo_dir = client_with_config
+    response = client.get("/api/render/input")
+    assert response.status_code == 404
+
+
+def test_api_render_returns_404_for_unknown_key(client_with_config):
+    client, demo_dir = client_with_config
+    response = client.get("/api/render/uncertainty")
+    assert response.status_code == 404
+
+
+def test_api_render_returns_png_when_present(client_with_config):
+    client, demo_dir = client_with_config
+    _write_fake_geotiff(demo_dir / "input" / "scene.tif", width=16, height=16, count=2)
+
+    response = client.get("/api/render/input")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.content[:8] == b"\x89PNG\r\n\x1a\n"  # PNG magic bytes
+
+
+def test_api_raster_info_returns_null_when_missing(client_with_config):
+    client, demo_dir = client_with_config
+    response = client.get("/api/raster-info")
+    data = response.json()
+    assert data["input"] is None
+    assert data["sr"] is None
+
+
+def test_api_raster_info_returns_dimensions_when_present(client_with_config):
+    client, demo_dir = client_with_config
+    _write_fake_geotiff(demo_dir / "input" / "scene.tif", width=8, height=8, count=2)
+    _write_fake_geotiff(demo_dir / "sr" / "scene_sr.tif", width=32, height=32, count=2)
+
+    response = client.get("/api/raster-info")
+    data = response.json()
+    assert data["input"]["width"] == 8
+    assert data["sr"]["width"] == 32
