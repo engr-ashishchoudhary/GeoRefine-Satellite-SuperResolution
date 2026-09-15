@@ -1,5 +1,5 @@
 """
-Tests for app.data_adapter and the FastAPI app's endpoints (Phases 10-11).
+Tests for app.data_adapter and the FastAPI app's endpoints (Phases 10-12).
 """
 from __future__ import annotations
 
@@ -13,7 +13,14 @@ import rasterio
 import yaml
 from rasterio.transform import from_origin
 
-from app.data_adapter import get_demo_status, load_manifest, load_metrics, load_raster_summary
+from app.data_adapter import (
+    describe_metrics,
+    get_demo_status,
+    is_placeholder_metrics,
+    load_manifest,
+    load_metrics,
+    load_raster_summary,
+)
 
 
 def _write_fake_geotiff(path: Path, width=8, height=8, count=1):
@@ -113,6 +120,53 @@ def test_load_raster_summary_returns_none_when_missing(tmp_path):
     assert load_raster_summary(config, "sr") is None
 
 
+def test_is_placeholder_metrics_true_for_phase0_style():
+    placeholder = {"psnr": 0.0, "ssim": 0.0, "rmse": 0.0, "sam": 0.0, "note": "Placeholder values from Phase 0."}
+    assert is_placeholder_metrics(placeholder) is True
+
+
+def test_is_placeholder_metrics_false_for_real_result():
+    real = {
+        "psnr": 5.0, "ssim": 0.9, "rmse": 2.0, "sam": 1.0,
+        "scene_id": "sceneA", "comparison_type": "real_hr_reference", "note": "...",
+    }
+    assert is_placeholder_metrics(real) is False
+
+
+def test_describe_metrics_unavailable_when_missing(tmp_path):
+    config = _base_config(tmp_path / "demo_data")
+    result = describe_metrics(config)
+    assert result == {"available": False, "is_placeholder": False, "metrics": None}
+
+
+def test_describe_metrics_flags_placeholder(tmp_path):
+    demo_dir = tmp_path / "demo_data"
+    metrics_path = demo_dir / "metrics" / "metrics.json"
+    metrics_path.parent.mkdir(parents=True)
+    with open(metrics_path, "w") as f:
+        json.dump({"psnr": 0.0, "ssim": 0.0, "rmse": 0.0, "sam": 0.0, "note": "Placeholder"}, f)
+    config = _base_config(demo_dir)
+    result = describe_metrics(config)
+    assert result["available"] is True
+    assert result["is_placeholder"] is True
+
+
+def test_describe_metrics_flags_real_result(tmp_path):
+    demo_dir = tmp_path / "demo_data"
+    metrics_path = demo_dir / "metrics" / "metrics.json"
+    metrics_path.parent.mkdir(parents=True)
+    with open(metrics_path, "w") as f:
+        json.dump(
+            {"psnr": 5.0, "ssim": 0.9, "rmse": 2.0, "sam": 1.0, "scene_id": "sceneA", "comparison_type": "real_hr_reference"},
+            f,
+        )
+    config = _base_config(demo_dir)
+    result = describe_metrics(config)
+    assert result["available"] is True
+    assert result["is_placeholder"] is False
+    assert result["metrics"]["psnr"] == 5.0
+
+
 # ---------------------------------------------------------------------------
 # app.py - FastAPI endpoints
 # ---------------------------------------------------------------------------
@@ -148,18 +202,36 @@ def test_api_metrics_reports_unavailable_when_missing(client_with_config):
     assert response.status_code == 200
     data = response.json()
     assert data["available"] is False
+    assert data["is_placeholder"] is False
 
 
-def test_api_metrics_returns_values_when_present(client_with_config):
+def test_api_metrics_flags_placeholder(client_with_config):
     client, demo_dir = client_with_config
     metrics_path = demo_dir / "metrics" / "metrics.json"
     metrics_path.parent.mkdir(parents=True)
     with open(metrics_path, "w") as f:
-        json.dump({"psnr": 5.0, "ssim": 0.9, "rmse": 2.0, "sam": 1.0}, f)
+        json.dump({"psnr": 0.0, "ssim": 0.0, "rmse": 0.0, "sam": 0.0, "note": "Placeholder"}, f)
 
     response = client.get("/api/metrics")
     data = response.json()
     assert data["available"] is True
+    assert data["is_placeholder"] is True
+
+
+def test_api_metrics_returns_real_values_when_present(client_with_config):
+    client, demo_dir = client_with_config
+    metrics_path = demo_dir / "metrics" / "metrics.json"
+    metrics_path.parent.mkdir(parents=True)
+    with open(metrics_path, "w") as f:
+        json.dump(
+            {"psnr": 5.0, "ssim": 0.9, "rmse": 2.0, "sam": 1.0, "scene_id": "sceneA", "comparison_type": "real_hr_reference"},
+            f,
+        )
+
+    response = client.get("/api/metrics")
+    data = response.json()
+    assert data["available"] is True
+    assert data["is_placeholder"] is False
     assert data["metrics"]["psnr"] == 5.0
 
 
@@ -189,7 +261,7 @@ def test_api_render_returns_png_when_present(client_with_config):
     response = client.get("/api/render/input")
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/png"
-    assert response.content[:8] == b"\x89PNG\r\n\x1a\n"  # PNG magic bytes
+    assert response.content[:8] == b"\x89PNG\r\n\x1a\n"
 
 
 def test_api_raster_info_returns_null_when_missing(client_with_config):
