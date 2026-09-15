@@ -160,3 +160,57 @@ the real project files. See `tests/test\_app.py`.
 
 &#x20; visualization phases.
 
+
+## Phase 11: Before/After Visualization
+
+`app/rendering.py` renders raster pixel data as PNG for the dashboard's
+before/after comparison slider. This is a new module, separate from
+`data_adapter.py`, since pixel rendering is a genuinely different concern
+from file-presence/metadata reporting (`data_adapter.py`'s own docstring
+says it never loads pixel data).
+
+### Rendering choice
+
+Sentinel-2 imagery here is 2-band (red, nir) — there is no green band, so
+no true-color RGB is possible. This module renders a **false-color
+composite**: R channel = NIR, G/B channels = Red. This is a documented
+visualization convention for display purposes only, not a claim about the
+underlying data.
+
+### Band order assumption
+
+Every module in `src/` builds `requested_bands` as `{"red": ..., "nir":
+...}` in that order, so band index 0 is always red and index 1 is always
+nir in every raster this pipeline writes. `rendering.py` relies on this
+same project-wide convention — it does not introduce a new assumption.
+
+### New endpoints
+
+- `GET /api/render/{input|sr}` — returns a PNG. `404` with a clear message
+  if the raster doesn't exist yet.
+- `GET /api/raster-info` — `{"input": {...} | null, "sr": {...} | null}`,
+  width/height/band-count/CRS for each, without loading pixel data
+  (reuses `data_adapter.load_raster_summary`).
+
+### Config (`config.yaml`, additive)
+
+```yaml
+visualization:
+  stretch_low_percentile: 2.0
+  stretch_high_percentile: 98.0
+```
+
+### Dependencies added
+
+- `Pillow` — PNG encoding. Already installed transitively via
+  `torchvision`/`scikit-image`, now declared explicitly since
+  `app/rendering.py` imports it directly.
+
+### Known limitations
+
+- The before/after slider displays both images at the same on-screen size
+  (browser-scaled) — the LR image is visibly blockier before the slider
+  reveals the SR side. This is an honest side-effect of the display
+  method, not a rendering artifact to hide.
+- Percentile stretch parameters are global (one setting for all scenes),
+  not per-scene auto-tuned.
