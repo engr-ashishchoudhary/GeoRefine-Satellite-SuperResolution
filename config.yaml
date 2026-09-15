@@ -56,3 +56,7 @@ validation:
 uncertainty:
   augmentations: ["identity", "hflip", "vflip", "hvflip"]
   output_report_filename: "uncertainty_report.json"
+
+
+downstream:
+  output_report_filename: "ndvi_report.json"
