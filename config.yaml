@@ -60,3 +60,7 @@ uncertainty:
 
 downstream:
   output_report_filename: "ndvi_report.json"
+
+
+pipeline:
+  manifest_filename: "manifest.json"
