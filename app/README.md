@@ -214,3 +214,51 @@ visualization:
   method, not a rendering artifact to hide.
 - Percentile stretch parameters are global (one setting for all scenes),
   not per-scene auto-tuned.
+
+
+## Phase 12: Metrics Visualization
+
+Adds `data_adapter.describe_metrics()` and a Validation Metrics panel to
+the dashboard.
+
+### Placeholder detection
+
+Phase 0's original `demo_data/metrics/metrics.json` is a hand-written
+placeholder (`{"psnr": 0.0, ..., "note": "Placeholder values..."}`). Phase
+6's real output (`src.validation.pipeline.run_validation()`) always adds
+`scene_id` and `comparison_type` keys the placeholder never had.
+`is_placeholder_metrics()` checks for the presence of both — this is the
+single place that distinguishes "a real computed result" from "the
+original placeholder," so the dashboard never presents a placeholder
+`0.0` as if it were a genuine measurement.
+
+### `/api/metrics` response shape (changed, additive)
+
+```json
+{
+  "available": true,
+  "is_placeholder": false,
+  "metrics": { "psnr": 5.0, "ssim": 0.9, "rmse": 2.0, "sam": 1.0,
+               "scene_id": "...", "comparison_type": "...", "note": "..." }
+}
+```
+
+If `is_placeholder` is `true`, the dashboard shows an explicit amber
+banner rather than the metric cards — never silently showing `0.0`s as a
+real result.
+
+### Metric display
+
+PSNR (dB), SSIM (unitless), RMSE (unitless, same scale as pixel values),
+SAM (degrees) are shown as four cards, plus `comparison_type` and the
+scientific `note` from `metrics.json` (e.g. "synthetic_degradation_proxy"
+scenes get their cautionary note surfaced directly in the UI, not just in
+the JSON).
+
+### Known limitations
+
+- No historical/multi-run comparison — only the single most recent
+  `metrics.json` is shown.
+- PSNR `Infinity` (a mathematically valid result for an exact-match band,
+  see `src/validation/metrics.py`) is displayed as `∞`, not hidden or
+  replaced with a large finite number.
