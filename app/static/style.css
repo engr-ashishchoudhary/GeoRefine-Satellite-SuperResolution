@@ -162,3 +162,73 @@ main {
   color: var(--muted);
   margin-top: 4px;
 }
+
+
+/* Metrics panel */
+
+.metrics-comparison-type {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 0;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.metric-card {
+  background: #0e151c;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px;
+  text-align: center;
+}
+
+.metric-label {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.metric-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.metric-unit {
+  font-size: 13px;
+  color: var(--muted);
+  margin-left: 3px;
+}
+
+.metrics-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  margin-top: 4px;
+}
+
+.placeholder-banner {
+  background: #241a0e;
+  border: 1px solid #4a3210;
+  color: #e0a35c;
+  border-radius: 6px;
+  padding: 12px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.placeholder-banner code {
+  background: #0e151c;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--accent);
+}

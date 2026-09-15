@@ -1,5 +1,5 @@
 """
-Phase 10 data adapter: the ONLY module in app/ that knows about
+Phase 10/12 data adapter: the ONLY module in app/ that knows about
 demo_data/'s file layout and config.yaml's paths. Every other dashboard
 component (API routes, frontend JS) works with the normalized dicts this
 module returns - not raw file paths - per the project's dashboard
@@ -65,7 +65,7 @@ def get_demo_status(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def load_metrics(config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Return demo_data/metrics/metrics.json's contents, or None if missing."""
+    """Return demo_data/metrics/metrics.json's raw contents, or None if missing."""
     contract = config.get("demo_data_contract", {})
     if "metrics" not in contract:
         return None
@@ -76,12 +76,40 @@ def load_metrics(config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return json.load(f)
 
 
+def is_placeholder_metrics(metrics: Dict[str, Any]) -> bool:
+    """A metrics.json is a genuine Phase 6 result if and only if it carries
+    'scene_id' and 'comparison_type' - both added by
+    src.validation.pipeline.run_validation() and never present in Phase 0's
+    original hand-written placeholder file. This is the one place that
+    distinguishes "computed" from "placeholder," so the dashboard never
+    presents a placeholder 0.0 as a real measurement.
+    """
+    return not ("scene_id" in metrics and "comparison_type" in metrics)
+
+
+def describe_metrics(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Return the dashboard-ready metrics description:
+      - "available": bool - whether metrics.json exists at all
+      - "is_placeholder": bool - True if it's Phase 0's original placeholder,
+        not yet replaced by a real Phase 6 run. Always False if not available.
+      - "metrics": the raw dict, or None if not available.
+    """
+    metrics = load_metrics(config)
+    if metrics is None:
+        return {"available": False, "is_placeholder": False, "metrics": None}
+    return {
+        "available": True,
+        "is_placeholder": is_placeholder_metrics(metrics),
+        "metrics": metrics,
+    }
+
+
 def load_raster_summary(config: Dict[str, Any], contract_key: str) -> Optional[Dict[str, Any]]:
     """Return lightweight metadata (no pixel data) for a raster contract
     entry - width, height, band count, CRS - or None if the file doesn't
     exist. Used to confirm a raster is present and readable without
-    loading its full pixel array; later visualization phases (11-14) will
-    load actual pixel data through their own logic, not this function.
+    loading its full pixel array; visualization phases load actual pixel
+    data through their own logic, not this function.
     """
     contract = config.get("demo_data_contract", {})
     if contract_key not in contract:

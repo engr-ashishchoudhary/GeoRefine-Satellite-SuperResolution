@@ -1,12 +1,14 @@
 """
-Phase 10/11: FastAPI dashboard.
+Phase 10/11/12: FastAPI dashboard.
 
 Phase 10 established the foundation (status/metrics endpoints, static
-page). Phase 11 adds before/after raster rendering. This module never
-reads demo_data/ file paths directly for status/metadata - it only calls
-app.data_adapter functions - but DOES call app.rendering (which reads
-pixel data) for the two /api/render/* endpoints, since pixel rendering is
-this phase's job (see app/README.md).
+page). Phase 11 added before/after raster rendering. Phase 12 enriches the
+metrics endpoint to distinguish a real computed result from Phase 0's
+placeholder file, via app.data_adapter.describe_metrics(). This module
+never reads demo_data/ file paths directly for status/metadata - it only
+calls app.data_adapter functions - but DOES call app.rendering (which
+reads pixel data) for the two /api/render/* endpoints, since pixel
+rendering is that phase's job (see app/README.md).
 
 Config path is overridable via the GEOREFINE_CONFIG environment variable
 so tests can point at an isolated temporary config without touching the
@@ -25,7 +27,7 @@ from fastapi.staticfiles import StaticFiles
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.data_adapter import get_demo_status, load_metrics, load_raster_summary
+from app.data_adapter import describe_metrics, get_demo_status, load_raster_summary
 from app.rendering import render_raster_file_as_png
 
 APP_DIR = Path(__file__).resolve().parent
@@ -40,7 +42,7 @@ def load_config() -> dict:
         return yaml.safe_load(f)
 
 
-app = FastAPI(title="GeoRefine Dashboard", version="0.2.0")
+app = FastAPI(title="GeoRefine Dashboard", version="0.3.0")
 
 
 @app.get("/api/status")
@@ -52,10 +54,7 @@ def api_status():
 @app.get("/api/metrics")
 def api_metrics():
     config = load_config()
-    metrics = load_metrics(config)
-    if metrics is None:
-        return {"available": False, "metrics": None}
-    return {"available": True, "metrics": metrics}
+    return describe_metrics(config)
 
 
 @app.get("/api/raster-info")

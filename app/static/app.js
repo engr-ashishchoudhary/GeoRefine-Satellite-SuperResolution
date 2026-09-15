@@ -19,6 +19,8 @@ async function main() {
     sections.push(await renderBeforeAfterPanel());
   }
 
+  sections.push(await renderMetricsPanel());
+
   appEl.innerHTML = sections.join("");
 
   if (status.files.input && status.files.input.exists && status.files.sr && status.files.sr.exists) {
@@ -90,8 +92,6 @@ function wireCompareSlider() {
   const beforeImg = document.getElementById("compareBeforeImg");
 
   function setBeforeImgWidth() {
-    // The "before" image must render at the full wrap width even though its
-    // clipping layer is narrower, so it doesn't get squeezed as the slider moves.
     beforeImg.style.width = `${wrap.clientWidth}px`;
   }
   setBeforeImgWidth();
@@ -102,6 +102,68 @@ function wireCompareSlider() {
     beforeLayer.style.width = `${pct}%`;
     divider.style.left = `${pct}%`;
   });
+}
+
+const METRIC_DEFS = [
+  { key: "psnr", label: "PSNR", unit: "dB", higherIsBetter: true },
+  { key: "ssim", label: "SSIM", unit: "", higherIsBetter: true },
+  { key: "rmse", label: "RMSE", unit: "", higherIsBetter: false },
+  { key: "sam", label: "SAM", unit: "°", higherIsBetter: false },
+];
+
+function formatMetricValue(value) {
+  if (value === null || value === undefined) return "—";
+  if (value === Infinity || value === "Infinity") return "∞";
+  if (typeof value === "number") return value.toFixed(3);
+  return String(value);
+}
+
+async function renderMetricsPanel() {
+  let data;
+  try {
+    data = await fetchJSON("/api/metrics");
+  } catch (err) {
+    return `<div class="panel"><h2>Validation Metrics</h2><p class="empty-state">Could not load metrics: ${err}</p></div>`;
+  }
+
+  if (!data.available) {
+    return `<div class="panel"><h2>Validation Metrics</h2><div class="empty-state">
+        <p>No metrics have been computed yet.</p>
+        <p>Run: <code>python scripts/run_validation.py</code></p>
+      </div></div>`;
+  }
+
+  const m = data.metrics;
+
+  if (data.is_placeholder) {
+    return `<div class="panel">
+      <h2>Validation Metrics</h2>
+      <div class="placeholder-banner">
+        These are Phase 0 placeholder values, not yet computed from real data.
+        Run <code>python scripts/run_validation.py</code> to generate a real result.
+      </div>
+    </div>`;
+  }
+
+  const cards = METRIC_DEFS.map(
+    (def) => `
+      <div class="metric-card">
+        <div class="metric-label">${def.label}</div>
+        <div class="metric-value">${formatMetricValue(m[def.key])}<span class="metric-unit">${def.unit}</span></div>
+      </div>`
+  ).join("");
+
+  const comparisonLine = m.comparison_type
+    ? `<p class="metrics-comparison-type">Comparison type: <strong>${m.comparison_type}</strong></p>`
+    : "";
+  const noteLine = m.note ? `<p class="metrics-note">${m.note}</p>` : "";
+
+  return `<div class="panel">
+      <h2>Validation Metrics</h2>
+      ${comparisonLine}
+      <div class="metrics-grid">${cards}</div>
+      ${noteLine}
+    </div>`;
 }
 
 main();
