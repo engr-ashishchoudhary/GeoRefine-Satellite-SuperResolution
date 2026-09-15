@@ -69,3 +69,8 @@ pipeline:
 app:
   host: "127.0.0.1"
   port: 8000
+
+
+visualization:
+  stretch_low_percentile: 2.0
+  stretch_high_percentile: 98.0
