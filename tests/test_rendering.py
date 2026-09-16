@@ -1,5 +1,5 @@
 """
-Tests for app.rendering (Phases 11 and 13).
+Tests for app.rendering (Phases 11, 13, 14).
 """
 from __future__ import annotations
 
@@ -17,6 +17,8 @@ from app.rendering import (
     render_ndvi_png,
     render_ndvi_raster_file_as_png,
     render_raster_file_as_png,
+    render_uncertainty_png,
+    render_uncertainty_raster_file_as_png,
 )
 
 
@@ -96,8 +98,8 @@ def test_render_ndvi_png_nan_pixels_are_transparent():
     png_bytes = render_ndvi_png(array)
     image = Image.open(io.BytesIO(png_bytes))
     pixels = np.array(image)
-    assert pixels[0, 1, 3] == 0  # NaN pixel: alpha = 0
-    assert pixels[0, 0, 3] == 255  # valid pixel: alpha = 255
+    assert pixels[0, 1, 3] == 0
+    assert pixels[0, 0, 3] == 255
 
 
 def test_render_ndvi_png_low_value_is_brownish():
@@ -106,7 +108,7 @@ def test_render_ndvi_png_low_value_is_brownish():
     image = Image.open(io.BytesIO(png_bytes))
     pixels = np.array(image)
     r, g, b, a = pixels[0, 0]
-    assert r > g  # brown: red channel dominates over green at NDVI = -1
+    assert r > g
 
 
 def test_render_ndvi_png_high_value_is_greenish():
@@ -115,7 +117,7 @@ def test_render_ndvi_png_high_value_is_greenish():
     image = Image.open(io.BytesIO(png_bytes))
     pixels = np.array(image)
     r, g, b, a = pixels[0, 0]
-    assert g > r  # green: green channel dominates over red at NDVI = 1
+    assert g > r
 
 
 def test_render_ndvi_png_rejects_wrong_ndim():
@@ -139,3 +141,60 @@ def test_render_ndvi_raster_file_as_png_reads_real_file(tmp_path):
     image = Image.open(io.BytesIO(png_bytes))
     assert image.size == (16, 16)
     assert image.mode == "RGBA"
+
+
+# ---------------------------------------------------------------------------
+# Phase 14: uncertainty heatmap rendering
+# ---------------------------------------------------------------------------
+
+def test_render_uncertainty_png_produces_valid_rgb_png():
+    rng = np.random.default_rng(0)
+    band_stack = rng.random((2, 20, 24)) * 5.0
+    png_bytes = render_uncertainty_png(band_stack)
+    image = Image.open(io.BytesIO(png_bytes))
+    assert image.format == "PNG"
+    assert image.size == (24, 20)
+    assert image.mode == "RGB"
+
+
+def test_render_uncertainty_png_low_value_is_darker_than_high_value():
+    low = np.zeros((2, 4, 4))
+    high = np.full((2, 4, 4), 100.0)
+
+    combined = np.concatenate([low, high], axis=2)  # side-by-side low | high, same percentile stretch
+    png_bytes = render_uncertainty_png(combined)
+    image = Image.open(io.BytesIO(png_bytes))
+    pixels = np.array(image)
+
+    low_pixel_sum = int(pixels[0, 0].sum())
+    high_pixel_sum = int(pixels[0, -1].sum())
+    assert high_pixel_sum > low_pixel_sum  # high uncertainty -> brighter/hotter color
+
+
+def test_render_uncertainty_png_accepts_single_band():
+    band_stack = np.random.rand(1, 8, 8)
+    png_bytes = render_uncertainty_png(band_stack)
+    image = Image.open(io.BytesIO(png_bytes))
+    assert image.size == (8, 8)
+
+
+def test_render_uncertainty_png_rejects_wrong_ndim():
+    array = np.zeros((8, 8))
+    with pytest.raises(ValueError):
+        render_uncertainty_png(array)
+
+
+def test_render_uncertainty_raster_file_as_png_reads_real_file(tmp_path):
+    path = tmp_path / "uncertainty.tif"
+    transform = from_origin(0.0, 16.0, 1.0, 1.0)
+    data = (np.random.rand(2, 16, 16) * 3.0).astype("float32")
+    with rasterio.open(
+        path, "w", driver="GTiff", height=16, width=16,
+        count=2, dtype="float32", crs="EPSG:4326", transform=transform,
+    ) as dst:
+        dst.write(data)
+
+    png_bytes = render_uncertainty_raster_file_as_png(path)
+    image = Image.open(io.BytesIO(png_bytes))
+    assert image.size == (16, 16)
+    assert image.mode == "RGB"

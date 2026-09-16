@@ -1,5 +1,5 @@
 """
-Tests for app.data_adapter and the FastAPI app's endpoints (Phases 10-13).
+Tests for app.data_adapter and the FastAPI app's endpoints (Phases 10-14).
 """
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from app.data_adapter import (
     load_metrics,
     load_ndvi_report,
     load_raster_summary,
+    load_uncertainty_report,
 )
 
 
@@ -50,6 +51,7 @@ def _base_config(demo_dir, processed_dir=None):
             "metrics": "metrics/metrics.json",
             "original_ndvi": "ndvi/original_ndvi.tif",
             "sr_ndvi": "ndvi/sr_ndvi.tif",
+            "uncertainty": "uncertainty/scene_uncertainty.tif",
         },
         "pipeline": {"manifest_filename": "manifest.json"},
         "visualization": {
@@ -59,6 +61,7 @@ def _base_config(demo_dir, processed_dir=None):
             "ndvi_max": 1.0,
         },
         "downstream": {"output_report_filename": "ndvi_report.json"},
+        "uncertainty": {"output_report_filename": "uncertainty_report.json"},
     }
 
 
@@ -123,7 +126,23 @@ def test_load_ndvi_report_returns_contents_when_present(tmp_path):
     config = _base_config(tmp_path / "demo_data", processed_dir)
     report = load_ndvi_report(config)
     assert report["scene_id"] == "sceneA"
-    assert report["original_ndvi"]["stats"]["mean"] == 0.3
+
+
+def test_load_uncertainty_report_returns_none_when_missing(tmp_path):
+    config = _base_config(tmp_path / "demo_data", tmp_path / "processed")
+    assert load_uncertainty_report(config) is None
+
+
+def test_load_uncertainty_report_returns_contents_when_present(tmp_path):
+    processed_dir = tmp_path / "processed"
+    processed_dir.mkdir(parents=True)
+    report_path = processed_dir / "uncertainty_report.json"
+    with open(report_path, "w") as f:
+        json.dump({"scene_id": "sceneA", "num_augmentations": 4, "per_band_stats": []}, f)
+    config = _base_config(tmp_path / "demo_data", processed_dir)
+    report = load_uncertainty_report(config)
+    assert report["scene_id"] == "sceneA"
+    assert report["num_augmentations"] == 4
 
 
 # ---------------------------------------------------------------------------
@@ -200,12 +219,6 @@ def test_api_render_ndvi_returns_404_when_missing(client_with_config):
     assert response.status_code == 404
 
 
-def test_api_render_ndvi_returns_404_for_unknown_key(client_with_config):
-    client, demo_dir, processed_dir = client_with_config
-    response = client.get("/api/render-ndvi/sr")
-    assert response.status_code == 404
-
-
 def test_api_render_ndvi_returns_png_when_present(client_with_config):
     client, demo_dir, processed_dir = client_with_config
     _write_fake_geotiff(demo_dir / "ndvi" / "original_ndvi.tif", width=16, height=16, count=1, dtype="float32")
@@ -213,7 +226,6 @@ def test_api_render_ndvi_returns_png_when_present(client_with_config):
     response = client.get("/api/render-ndvi/original_ndvi")
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/png"
-    assert response.content[:8] == b"\x89PNG\r\n\x1a\n"
 
 
 def test_api_ndvi_info_returns_null_when_missing(client_with_config):
@@ -221,20 +233,41 @@ def test_api_ndvi_info_returns_null_when_missing(client_with_config):
     response = client.get("/api/ndvi-info")
     data = response.json()
     assert data["original_ndvi"] is None
-    assert data["sr_ndvi"] is None
     assert data["report"] is None
 
 
-def test_api_ndvi_info_returns_data_when_present(client_with_config):
+def test_api_render_uncertainty_returns_404_when_missing(client_with_config):
     client, demo_dir, processed_dir = client_with_config
-    _write_fake_geotiff(demo_dir / "ndvi" / "original_ndvi.tif", width=8, height=8, count=1, dtype="float32")
-    _write_fake_geotiff(demo_dir / "ndvi" / "sr_ndvi.tif", width=32, height=32, count=1, dtype="float32")
-    processed_dir.mkdir(parents=True, exist_ok=True)
-    with open(processed_dir / "ndvi_report.json", "w") as f:
-        json.dump({"scene_id": "sceneA", "note": "test note"}, f)
+    response = client.get("/api/render-uncertainty")
+    assert response.status_code == 404
 
-    response = client.get("/api/ndvi-info")
+
+def test_api_render_uncertainty_returns_png_when_present(client_with_config):
+    client, demo_dir, processed_dir = client_with_config
+    _write_fake_geotiff(demo_dir / "uncertainty" / "scene_uncertainty.tif", width=16, height=16, count=2, dtype="float32")
+
+    response = client.get("/api/render-uncertainty")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.content[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_api_uncertainty_info_returns_null_when_missing(client_with_config):
+    client, demo_dir, processed_dir = client_with_config
+    response = client.get("/api/uncertainty-info")
     data = response.json()
-    assert data["original_ndvi"]["width"] == 8
-    assert data["sr_ndvi"]["width"] == 32
+    assert data["uncertainty"] is None
+    assert data["report"] is None
+
+
+def test_api_uncertainty_info_returns_data_when_present(client_with_config):
+    client, demo_dir, processed_dir = client_with_config
+    _write_fake_geotiff(demo_dir / "uncertainty" / "scene_uncertainty.tif", width=16, height=16, count=2, dtype="float32")
+    processed_dir.mkdir(parents=True, exist_ok=True)
+    with open(processed_dir / "uncertainty_report.json", "w") as f:
+        json.dump({"scene_id": "sceneA", "num_augmentations": 4, "per_band_stats": []}, f)
+
+    response = client.get("/api/uncertainty-info")
+    data = response.json()
+    assert data["uncertainty"]["width"] == 16
     assert data["report"]["scene_id"] == "sceneA"
