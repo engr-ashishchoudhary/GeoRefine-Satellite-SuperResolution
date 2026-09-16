@@ -262,3 +262,62 @@ the JSON).
 - PSNR `Infinity` (a mathematically valid result for an exact-match band,
   see `src/validation/metrics.py`) is displayed as `∞`, not hidden or
   replaced with a large finite number.
+
+
+## Phase 13: NDVI Visualization
+
+Adds `data_adapter.load_ndvi_report()`, `rendering.render_ndvi_png()`, and
+an NDVI panel to the dashboard.
+
+### Colormap, not percentile stretch
+
+NDVI has a defined physical range (-1 to 1), unlike the arbitrary-range
+radiance values Phase 11's false-color rendering handles. This module
+uses a **fixed** brown → yellow → green colormap over that fixed range —
+not a percentile stretch, which would rescale each scene's NDVI
+differently and make values incomparable across scenes.
+
+### NaN handling
+
+`src.downstream.ndvi.compute_ndvi()` writes real `NaN` for pixels where
+NDVI is undefined (zero denominator). These render **fully transparent**
+(RGBA alpha=0) — a checkerboard pattern shows through in the dashboard —
+so "no data" is visually distinct from "low NDVI" (which is still a solid
+brown), never conflated.
+
+### No diff/overlay between original and SR NDVI
+
+Per Phase 8's documented limitation, `original_ndvi` (LR resolution) and
+`sr_ndvi` (LR resolution × `model.scale`) are different resolutions and
+are never pixel-aligned. This panel shows them **side by side**, not with
+a comparison slider — a slider would misleadingly imply pixel
+correspondence that doesn't exist between the two rasters.
+
+### New data source: `data/processed/`
+
+`load_ndvi_report()` is the first `data_adapter` function to read from
+`data/processed/` rather than `demo_data/` — still entirely config-driven
+(`paths.data_processed`, `downstream.output_report_filename`), so the
+"adapter is the only module that knows file layout" rule is preserved.
+
+### New endpoints
+
+- `GET /api/render-ndvi/{original_ndvi|sr_ndvi}` — colormapped PNG. `404`
+  with a clear message if the raster doesn't exist yet.
+- `GET /api/ndvi-info` — `{"original_ndvi": {...}|null, "sr_ndvi": {...}|null, "report": {...}|null}`.
+
+### Config (`config.yaml`, additive)
+
+```yaml
+visualization:
+  ndvi_min: -1.0
+  ndvi_max: 1.0
+```
+
+### Known limitations
+
+- No pixel-wise NDVI difference/change map — same limitation documented in
+  `src/downstream/README.md`, not newly introduced by this phase.
+- The colormap's exact color stops are a display choice, not a
+  standardized index (e.g. not matching any specific published NDVI color
+  ramp standard).
