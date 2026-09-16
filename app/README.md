@@ -321,3 +321,54 @@ visualization:
 - The colormap's exact color stops are a display choice, not a
   standardized index (e.g. not matching any specific published NDVI color
   ramp standard).
+
+
+## Phase 14: Uncertainty Visualization
+
+Adds `data_adapter.load_uncertainty_report()`, `rendering.render_uncertainty_png()`,
+and an Uncertainty panel to the dashboard.
+
+### Heatmap, not false color or NDVI colormap
+
+Unlike NDVI, uncertainty has no fixed physical range — it is percentile-
+stretched (reusing `percentile_stretch()`, the same technique Phase 11
+uses) rather than mapped over a fixed scale. The stretched values are then
+mapped through a **navy → blue → yellow → orange → red heat colormap** —
+deliberately distinct from both the false-color (Phase 11) and
+brown-to-green NDVI (Phase 13) palettes, so no two panels can be visually
+confused with each other.
+
+### Band averaging
+
+The uncertainty raster carries the same 2 bands (red, nir) as the SR
+output. Rather than two separate heatmaps or an arbitrary single-band
+choice, bands are averaged into one display heatmap. The per-band
+breakdown is not lost — it's surfaced directly from
+`data/processed/uncertainty_report.json`'s `per_band_stats` in the panel
+text, not folded into the image.
+
+### Reused config, no new keys
+
+Uses `visualization.stretch_low_percentile`/`stretch_high_percentile` —
+the same settings Phase 11's false-color rendering uses, since both are
+percentile-stretch use cases for arbitrary-range data.
+
+### New endpoints
+
+- `GET /api/render-uncertainty` — heatmap PNG. `404` with a clear message
+  if the raster doesn't exist yet.
+- `GET /api/uncertainty-info` — `{"uncertainty": {...}|null, "report": {...}|null}`.
+
+### Scientific framing carried through to the UI
+
+The panel text and the report's `note` field both explicitly state this
+is **not a calibrated confidence interval** — matching
+`src/uncertainty/README.md`'s framing exactly, not softened for display.
+
+### Known limitations
+
+- Band-averaging for the heatmap is a display simplification; a
+  per-band toggle was considered but deferred to keep the prototype
+  simple, per the project's build-simple-then-refine approach.
+- Heatmap color stops are a display choice, not tied to any specific
+  uncertainty-magnitude threshold.
