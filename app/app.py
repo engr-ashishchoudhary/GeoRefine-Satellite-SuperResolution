@@ -1,13 +1,14 @@
 """
-Phase 10/11/12/13: FastAPI dashboard.
+Phase 10/11/12/13/14: FastAPI dashboard.
 
 Phase 10 established the foundation. Phase 11 added before/after raster
 rendering. Phase 12 added metrics visualization with placeholder
-detection. Phase 13 adds NDVI visualization. This module never reads
-demo_data/ or data/processed/ file paths directly for status/metadata -
-it only calls app.data_adapter functions - but DOES call app.rendering
-(which reads pixel data) for the render endpoints, since pixel rendering
-is that phase's job (see app/README.md).
+detection. Phase 13 added NDVI visualization. Phase 14 adds uncertainty
+visualization. This module never reads demo_data/ or data/processed/ file
+paths directly for status/metadata - it only calls app.data_adapter
+functions - but DOES call app.rendering (which reads pixel data) for the
+render endpoints, since pixel rendering is that phase's job (see
+app/README.md).
 
 Config path is overridable via the GEOREFINE_CONFIG environment variable
 so tests can point at an isolated temporary config without touching the
@@ -31,8 +32,13 @@ from app.data_adapter import (
     get_demo_status,
     load_ndvi_report,
     load_raster_summary,
+    load_uncertainty_report,
 )
-from app.rendering import render_ndvi_raster_file_as_png, render_raster_file_as_png
+from app.rendering import (
+    render_ndvi_raster_file_as_png,
+    render_raster_file_as_png,
+    render_uncertainty_raster_file_as_png,
+)
 
 APP_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH = APP_DIR.parent / "config.yaml"
@@ -47,7 +53,7 @@ def load_config() -> dict:
         return yaml.safe_load(f)
 
 
-app = FastAPI(title="GeoRefine Dashboard", version="0.4.0")
+app = FastAPI(title="GeoRefine Dashboard", version="0.5.0")
 
 
 @app.get("/api/status")
@@ -75,6 +81,15 @@ def api_ndvi_info():
         "original_ndvi": load_raster_summary(config, "original_ndvi"),
         "sr_ndvi": load_raster_summary(config, "sr_ndvi"),
         "report": load_ndvi_report(config),
+    }
+
+
+@app.get("/api/uncertainty-info")
+def api_uncertainty_info():
+    config = load_config()
+    return {
+        "uncertainty": load_raster_summary(config, "uncertainty"),
+        "report": load_uncertainty_report(config),
     }
 
 
@@ -126,6 +141,23 @@ def api_render_ndvi(key: str):
 
     try:
         png_bytes = render_ndvi_raster_file_as_png(raster_path, ndvi_min, ndvi_max)
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    return Response(content=png_bytes, media_type="image/png")
+
+
+@app.get("/api/render-uncertainty")
+def api_render_uncertainty():
+    config = load_config()
+    raster_path = _resolve_raster_path(config, "uncertainty")
+
+    viz_cfg = config.get("visualization", {})
+    low = viz_cfg.get("stretch_low_percentile", 2.0)
+    high = viz_cfg.get("stretch_high_percentile", 98.0)
+
+    try:
+        png_bytes = render_uncertainty_raster_file_as_png(raster_path, low, high)
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 

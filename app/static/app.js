@@ -28,6 +28,11 @@ async function main() {
     sections.push(await renderNdviPanel());
   }
 
+  const hasUncertainty = status.files.uncertainty && status.files.uncertainty.exists;
+  if (hasUncertainty) {
+    sections.push(await renderUncertaintyPanel());
+  }
+
   appEl.innerHTML = sections.join("");
 
   if (hasBeforeAfter) {
@@ -225,6 +230,59 @@ async function renderNdviPanel() {
           ${ndviStatsBlock("SR NDVI", srStats)}
         </div>
       </div>
+      ${noteLine}
+    </div>
+  `;
+}
+
+const UNCERTAINTY_BAND_LABELS = ["Red", "NIR"];
+
+function uncertaintyBandRows(perBandStats) {
+  if (!perBandStats || perBandStats.length === 0) {
+    return `<p class="empty-state">No per-band stats available.</p>`;
+  }
+  return perBandStats
+    .map((s) => {
+      const label = UNCERTAINTY_BAND_LABELS[s.band_index] || `Band ${s.band_index}`;
+      return `<div class="ndvi-stat-row">
+        <span>${label} — mean / max uncertainty</span>
+        <span>${Number(s.mean_uncertainty).toFixed(4)} / ${Number(s.max_uncertainty).toFixed(4)}</span>
+      </div>`;
+    })
+    .join("");
+}
+
+async function renderUncertaintyPanel() {
+  let info = { uncertainty: null, report: null };
+  try {
+    info = await fetchJSON("/api/uncertainty-info");
+  } catch (err) {
+    // fall through - panel still renders the image even without a report
+  }
+
+  const report = info.report;
+  const augmentationsLine = report
+    ? `<p class="compare-meta">TTA ensemble: ${report.num_augmentations} augmentations (${report.augmentations_used.join(", ")}).</p>`
+    : "";
+  const noteLine = report && report.note ? `<p class="metrics-note">${report.note}</p>` : "";
+  const bandRows = report ? uncertaintyBandRows(report.per_band_stats) : "";
+
+  return `
+    <div class="panel">
+      <h2>Uncertainty</h2>
+      <p class="compare-meta">
+        Heatmap shows per-pixel disagreement across a flip-based test-time-augmentation
+        ensemble, averaged across bands for display. This is NOT a calibrated confidence
+        interval - see the note below.
+      </p>
+      ${augmentationsLine}
+      <div class="uncertainty-image-wrap"><img src="/api/render-uncertainty" alt="Uncertainty heatmap" /></div>
+      <div class="uncertainty-legend">
+        <span>Low uncertainty</span>
+        <div class="uncertainty-gradient-bar"></div>
+        <span>High uncertainty</span>
+      </div>
+      <div class="ndvi-stats">${bandRows}</div>
       ${noteLine}
     </div>
   `;

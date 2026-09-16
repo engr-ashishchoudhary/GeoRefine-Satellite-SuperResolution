@@ -1,5 +1,5 @@
 """
-Phase 11/13: raster-to-PNG rendering for the dashboard.
+Phase 11/13/14: raster-to-PNG rendering for the dashboard.
 
 Deliberately separate from app/data_adapter.py, which never loads pixel
 data by design (see its docstring). This module owns pixel-level
@@ -11,20 +11,23 @@ src/ builds requested_bands as {"red": ..., "nir": ...} in that literal
 order when loading a band stack (see src/preprocessing/bands.py and every
 caller of it). Since Python dicts preserve insertion order, this means
 band index 0 is always red and index 1 is always nir in every raster this
-project's pipeline writes (demo_data/input/scene.tif,
-demo_data/sr/scene_sr.tif). This module relies on that same convention -
+project's pipeline writes. This module relies on that same convention -
 it is not a new assumption specific to rendering.
 
-Two distinct rendering paths:
-  - render_false_color_png() / render_raster_file_as_png(): for the 2-band
-    (red, nir) input/SR rasters (Phase 11). No true-color RGB is possible
-    with this band set - a false-color composite (R=NIR, G/B=Red) is used
-    for visual comparison only, not a scientific claim about the data.
-  - render_ndvi_png() / render_ndvi_raster_file_as_png(): for the
-    single-band NDVI rasters (Phase 13). NDVI has a defined physical range
-    (-1 to 1), so a fixed colormap is used - not a percentile stretch,
-    which would be appropriate for arbitrary-range radiance values but
-    would misleadingly rescale NDVI's meaningful range per-scene.
+Three distinct rendering paths, each with a visually distinct palette so
+no two panels can be confused for each other:
+  - render_false_color_png(): 2-band input/SR rasters (Phase 11). R=NIR,
+    G/B=Red - a display convention, not a scientific claim.
+  - render_ndvi_png(): single-band NDVI (Phase 13). Fixed brown-to-green
+    colormap over NDVI's defined -1..1 range - not percentile-stretched,
+    since that would make NDVI values incomparable across scenes.
+  - render_uncertainty_png(): the uncertainty raster (Phase 14). Unlike
+    NDVI, uncertainty has no fixed physical range - it is percentile-
+    stretched (reusing percentile_stretch(), same as Phase 11) then mapped
+    through a navy-to-red heat colormap. Bands are averaged into a single
+    display heatmap for simplicity; the per-band breakdown is not lost -
+    it lives in data/processed/uncertainty_report.json (Phase 7), surfaced
+    directly in the dashboard panel rather than as a second image.
 """
 from __future__ import annotations
 
@@ -143,3 +146,59 @@ def render_ndvi_raster_file_as_png(
     with rasterio.open(path) as src:
         array = src.read(1)
     return render_ndvi_png(array, ndvi_min, ndvi_max)
+
+
+# Uncertainty heatmap colormap: navy (low uncertainty) -> blue -> yellow ->
+# orange -> red (high uncertainty). Deliberately distinct from both the
+# false-color and NDVI palettes above, so a viewer can never mistake one
+# panel's colors for another's.
+_UNCERTAINTY_COLOR_STOPS = [
+    (0.0, (10, 10, 40)),
+    (0.25, (40, 80, 160)),
+    (0.5, (250, 210, 40)),
+    (0.75, (240, 120, 20)),
+    (1.0, (200, 20, 20)),
+]
+
+
+def _heat_colormap(normalized: np.ndarray) -> np.ndarray:
+    """Map a [0, 1]-normalized array to RGB via the navy-to-red heat colormap."""
+    stop_values = [s[0] for s in _UNCERTAINTY_COLOR_STOPS]
+    r = np.interp(normalized, stop_values, [s[1][0] for s in _UNCERTAINTY_COLOR_STOPS])
+    g = np.interp(normalized, stop_values, [s[1][1] for s in _UNCERTAINTY_COLOR_STOPS])
+    b = np.interp(normalized, stop_values, [s[1][2] for s in _UNCERTAINTY_COLOR_STOPS])
+    return np.stack([r, g, b], axis=-1)
+
+
+def render_uncertainty_png(
+    band_stack: np.ndarray, low_percentile: float = 2.0, high_percentile: float = 98.0
+) -> bytes:
+    """Render a (bands, H, W) uncertainty array as a heatmap PNG.
+
+    Bands are averaged into a single 2D array before rendering - see this
+    module's docstring for why. The averaged array is percentile-stretched
+    (reusing percentile_stretch(), same technique as the false-color
+    render) since uncertainty has no fixed physical range the way NDVI
+    does, then mapped through the navy-to-red heat colormap.
+    """
+    if band_stack.ndim != 3:
+        raise ValueError(f"Expected a (bands, H, W) array, got shape {band_stack.shape}")
+
+    band_averaged = band_stack.mean(axis=0)
+    stretched = percentile_stretch(band_averaged, low_percentile, high_percentile)
+    normalized = stretched.astype(np.float64) / 255.0
+
+    rgb = _heat_colormap(normalized).astype(np.uint8)
+    image = Image.fromarray(rgb, mode="RGB")
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def render_uncertainty_raster_file_as_png(
+    path: Union[str, Path], low_percentile: float = 2.0, high_percentile: float = 98.0
+) -> bytes:
+    """Read the uncertainty raster file and render it as a heatmap PNG."""
+    with rasterio.open(path) as src:
+        array = src.read()
+    return render_uncertainty_png(array, low_percentile, high_percentile)

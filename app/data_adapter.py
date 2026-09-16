@@ -128,7 +128,19 @@ def load_raster_summary(config: Dict[str, Any], contract_key: str) -> Optional[D
             "count": src.count,
             "crs": src.crs.to_string() if src.crs else None,
         }
-
+def load_uncertainty_report(config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Return data/processed/uncertainty_report.json's contents (Phase 7's
+    per-band mean/max uncertainty, augmentations used, and cautious-
+    interpretation note), or None if it doesn't exist yet. Reads from
+    data/processed/ rather than demo_data/, same pattern as
+    load_ndvi_report() - still entirely config-driven.
+    """
+    report_filename = config.get("uncertainty", {}).get("output_report_filename", "uncertainty_report.json")
+    report_path = _processed_dir(config) / report_filename
+    if not report_path.exists():
+        return None
+    with open(report_path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 def load_ndvi_report(config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Return data/processed/ndvi_report.json's contents (Phase 8's
