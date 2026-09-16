@@ -15,15 +15,22 @@ async function main() {
 
   const sections = [renderStatusPanel(status), renderContractPanel(status)];
 
-  if (status.files.input && status.files.input.exists && status.files.sr && status.files.sr.exists) {
+  const hasBeforeAfter = status.files.input && status.files.input.exists && status.files.sr && status.files.sr.exists;
+  if (hasBeforeAfter) {
     sections.push(await renderBeforeAfterPanel());
   }
 
   sections.push(await renderMetricsPanel());
 
+  const hasNdvi =
+    status.files.original_ndvi && status.files.original_ndvi.exists && status.files.sr_ndvi && status.files.sr_ndvi.exists;
+  if (hasNdvi) {
+    sections.push(await renderNdviPanel());
+  }
+
   appEl.innerHTML = sections.join("");
 
-  if (status.files.input && status.files.input.exists && status.files.sr && status.files.sr.exists) {
+  if (hasBeforeAfter) {
     wireCompareSlider();
   }
 }
@@ -164,6 +171,63 @@ async function renderMetricsPanel() {
       <div class="metrics-grid">${cards}</div>
       ${noteLine}
     </div>`;
+}
+
+function formatNdviStat(value) {
+  if (value === null || value === undefined) return "—";
+  return Number(value).toFixed(3);
+}
+
+function ndviStatsBlock(label, stats) {
+  if (!stats) return `<div class="ndvi-stats"><strong>${label}</strong><p class="empty-state">No stats available.</p></div>`;
+  return `<div class="ndvi-stats">
+    <strong>${label}</strong>
+    <div class="ndvi-stat-row"><span>Mean</span><span>${formatNdviStat(stats.mean)}</span></div>
+    <div class="ndvi-stat-row"><span>Min</span><span>${formatNdviStat(stats.min)}</span></div>
+    <div class="ndvi-stat-row"><span>Max</span><span>${formatNdviStat(stats.max)}</span></div>
+    <div class="ndvi-stat-row"><span>Valid pixels</span><span>${
+      stats.valid_pixel_fraction != null ? (stats.valid_pixel_fraction * 100).toFixed(1) + "%" : "—"
+    }</span></div>
+  </div>`;
+}
+
+async function renderNdviPanel() {
+  let info = { original_ndvi: null, sr_ndvi: null, report: null };
+  try {
+    info = await fetchJSON("/api/ndvi-info");
+  } catch (err) {
+    // fall through - panel still renders images even without metadata/report
+  }
+
+  const report = info.report;
+  const originalStats = report ? report.original_ndvi && report.original_ndvi.stats : null;
+  const srStats = report ? report.sr_ndvi && report.sr_ndvi.stats : null;
+  const noteLine = report && report.note ? `<p class="metrics-note">${report.note}</p>` : "";
+
+  return `
+    <div class="panel">
+      <h2>NDVI</h2>
+      <p class="compare-meta">
+        Original (LR-resolution) and SR-derived NDVI are shown side by side, not
+        pixel-differenced - they are at different resolutions and are not
+        pixel-aligned. Colormap: brown = low/no vegetation, green = healthy vegetation,
+        transparent = undefined (NDVI denominator was zero).
+      </p>
+      <div class="ndvi-grid">
+        <div class="ndvi-column">
+          <div class="ndvi-image-wrap"><img src="/api/render-ndvi/original_ndvi" alt="Original NDVI" /></div>
+          <p class="ndvi-caption">Original (from real LR imagery)</p>
+          ${ndviStatsBlock("Original NDVI", originalStats)}
+        </div>
+        <div class="ndvi-column">
+          <div class="ndvi-image-wrap"><img src="/api/render-ndvi/sr_ndvi" alt="SR-derived NDVI" /></div>
+          <p class="ndvi-caption">SR-derived (from reconstructed imagery)</p>
+          ${ndviStatsBlock("SR NDVI", srStats)}
+        </div>
+      </div>
+      ${noteLine}
+    </div>
+  `;
 }
 
 main();

@@ -1,16 +1,15 @@
 """
-Phase 10/12 data adapter: the ONLY module in app/ that knows about
-demo_data/'s file layout and config.yaml's paths. Every other dashboard
-component (API routes, frontend JS) works with the normalized dicts this
-module returns - not raw file paths - per the project's dashboard
-independence requirement (see README.md's "Dashboard Independence"
-section).
+Phase 10/12/13 data adapter: the ONLY module in app/ that knows about
+demo_data/'s and data/processed/'s file layout and config.yaml's paths.
+Every other dashboard component (API routes, frontend JS) works with the
+normalized dicts this module returns - not raw file paths - per the
+project's dashboard independence requirement (see README.md's "Dashboard
+Independence" section).
 
 This module is read-only: it never runs inference, computes metrics, or
-writes any file. If demo_data/ has not been populated yet (scripts/
-run_full_pipeline.py has not been run), every function here reports that
-clearly rather than raising an unhandled exception or fabricating
-placeholder data.
+writes any file. If demo_data/ (or data/processed/) has not been
+populated yet, every function here reports that clearly rather than
+raising an unhandled exception or fabricating placeholder data.
 """
 from __future__ import annotations
 
@@ -23,6 +22,10 @@ import rasterio
 
 def _demo_dir(config: Dict[str, Any]) -> Path:
     return Path(config["paths"]["demo_data"])
+
+
+def _processed_dir(config: Dict[str, Any]) -> Path:
+    return Path(config["paths"]["data_processed"])
 
 
 def load_manifest(config: Dict[str, Any]) -> Optional[Dict[str, str]]:
@@ -125,3 +128,20 @@ def load_raster_summary(config: Dict[str, Any], contract_key: str) -> Optional[D
             "count": src.count,
             "crs": src.crs.to_string() if src.crs else None,
         }
+
+
+def load_ndvi_report(config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Return data/processed/ndvi_report.json's contents (Phase 8's
+    per-raster mean/min/max, valid-pixel fraction, and scientific note), or
+    None if it doesn't exist yet. This is the first data_adapter function
+    to read from data/processed/ rather than demo_data/ - still entirely
+    config-driven (config.yaml's paths.data_processed and
+    downstream.output_report_filename), keeping the "adapter is the only
+    module that knows file layout" rule intact.
+    """
+    report_filename = config.get("downstream", {}).get("output_report_filename", "ndvi_report.json")
+    report_path = _processed_dir(config) / report_filename
+    if not report_path.exists():
+        return None
+    with open(report_path, "r", encoding="utf-8") as f:
+        return json.load(f)

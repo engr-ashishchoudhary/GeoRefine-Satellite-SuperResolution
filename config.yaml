@@ -74,3 +74,5 @@ app:
 visualization:
   stretch_low_percentile: 2.0
   stretch_high_percentile: 98.0
+  ndvi_min: -1.0
+  ndvi_max: 1.0
