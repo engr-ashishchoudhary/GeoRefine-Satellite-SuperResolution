@@ -1,5 +1,5 @@
 """
-Tests for app.rendering.
+Tests for app.rendering (Phases 11 and 13).
 """
 from __future__ import annotations
 
@@ -11,8 +11,18 @@ import rasterio
 from PIL import Image
 from rasterio.transform import from_origin
 
-from app.rendering import percentile_stretch, render_false_color_png, render_raster_file_as_png
+from app.rendering import (
+    percentile_stretch,
+    render_false_color_png,
+    render_ndvi_png,
+    render_ndvi_raster_file_as_png,
+    render_raster_file_as_png,
+)
 
+
+# ---------------------------------------------------------------------------
+# Phase 11: false-color rendering
+# ---------------------------------------------------------------------------
 
 def test_percentile_stretch_output_range():
     rng = np.random.default_rng(0)
@@ -32,7 +42,7 @@ def test_percentile_stretch_constant_band_is_zero():
 def test_percentile_stretch_excludes_nan_from_calculation():
     band = np.array([[1.0, 2.0, np.nan], [3.0, 4.0, np.nan]])
     stretched = percentile_stretch(band, low_percentile=0, high_percentile=100)
-    assert stretched[0, 2] == 0  # NaN pixel rendered as black
+    assert stretched[0, 2] == 0
     assert stretched[1, 2] == 0
 
 
@@ -65,3 +75,67 @@ def test_render_raster_file_as_png_reads_real_file(tmp_path):
     png_bytes = render_raster_file_as_png(path)
     image = Image.open(io.BytesIO(png_bytes))
     assert image.size == (16, 16)
+
+
+# ---------------------------------------------------------------------------
+# Phase 13: NDVI colormap rendering
+# ---------------------------------------------------------------------------
+
+def test_render_ndvi_png_produces_valid_rgba_png():
+    rng = np.random.default_rng(0)
+    array = rng.uniform(-1.0, 1.0, size=(20, 24))
+    png_bytes = render_ndvi_png(array)
+    image = Image.open(io.BytesIO(png_bytes))
+    assert image.format == "PNG"
+    assert image.size == (24, 20)
+    assert image.mode == "RGBA"
+
+
+def test_render_ndvi_png_nan_pixels_are_transparent():
+    array = np.array([[0.5, np.nan], [-0.5, 0.0]])
+    png_bytes = render_ndvi_png(array)
+    image = Image.open(io.BytesIO(png_bytes))
+    pixels = np.array(image)
+    assert pixels[0, 1, 3] == 0  # NaN pixel: alpha = 0
+    assert pixels[0, 0, 3] == 255  # valid pixel: alpha = 255
+
+
+def test_render_ndvi_png_low_value_is_brownish():
+    array = np.full((4, 4), -1.0)
+    png_bytes = render_ndvi_png(array)
+    image = Image.open(io.BytesIO(png_bytes))
+    pixels = np.array(image)
+    r, g, b, a = pixels[0, 0]
+    assert r > g  # brown: red channel dominates over green at NDVI = -1
+
+
+def test_render_ndvi_png_high_value_is_greenish():
+    array = np.full((4, 4), 1.0)
+    png_bytes = render_ndvi_png(array)
+    image = Image.open(io.BytesIO(png_bytes))
+    pixels = np.array(image)
+    r, g, b, a = pixels[0, 0]
+    assert g > r  # green: green channel dominates over red at NDVI = 1
+
+
+def test_render_ndvi_png_rejects_wrong_ndim():
+    array = np.zeros((2, 4, 4))
+    with pytest.raises(ValueError):
+        render_ndvi_png(array)
+
+
+def test_render_ndvi_raster_file_as_png_reads_real_file(tmp_path):
+    path = tmp_path / "ndvi.tif"
+    transform = from_origin(0.0, 16.0, 1.0, 1.0)
+    rng = np.random.default_rng(0)
+    data = rng.uniform(-1.0, 1.0, size=(1, 16, 16)).astype("float32")
+    with rasterio.open(
+        path, "w", driver="GTiff", height=16, width=16,
+        count=1, dtype="float32", crs="EPSG:4326", transform=transform, nodata=np.nan,
+    ) as dst:
+        dst.write(data)
+
+    png_bytes = render_ndvi_raster_file_as_png(path)
+    image = Image.open(io.BytesIO(png_bytes))
+    assert image.size == (16, 16)
+    assert image.mode == "RGBA"
