@@ -15,6 +15,7 @@ from rasterio.transform import from_origin
 
 from app.data_adapter import (
     describe_metrics,
+    get_app_mode,
     get_demo_status,
     is_placeholder_metrics,
     load_manifest,
@@ -54,6 +55,7 @@ def _base_config(demo_dir, processed_dir=None):
             "uncertainty": "uncertainty/scene_uncertainty.tif",
         },
         "pipeline": {"manifest_filename": "manifest.json"},
+        "app": {"host": "127.0.0.1", "port": 8000, "mode": "demo"},
         "visualization": {
             "stretch_low_percentile": 2.0,
             "stretch_high_percentile": 98.0,
@@ -271,3 +273,32 @@ def test_api_uncertainty_info_returns_data_when_present(client_with_config):
     data = response.json()
     assert data["uncertainty"]["width"] == 16
     assert data["report"]["scene_id"] == "sceneA"
+
+
+
+# ---------------------------------------------------------------------------
+# Phase 15: demo/live mode
+# ---------------------------------------------------------------------------
+
+def test_get_app_mode_defaults_to_demo():
+    config = {"app": {}}
+    assert get_app_mode(config) == "demo"
+
+
+def test_get_app_mode_returns_configured_value():
+    config = {"app": {"mode": "live"}}
+    assert get_app_mode(config) == "live"
+
+
+def test_get_app_mode_defaults_to_demo_when_app_section_missing():
+    assert get_app_mode({}) == "demo"
+
+
+def test_api_mode_returns_demo_by_default(client_with_config):
+    client, demo_dir, processed_dir = client_with_config
+    response = client.get("/api/mode")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["mode"] == "demo"
+    assert "precomputed" in data["description"]
+
