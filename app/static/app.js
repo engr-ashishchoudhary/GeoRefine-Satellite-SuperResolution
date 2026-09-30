@@ -5,6 +5,9 @@ async function fetchJSON(url) {
 
 async function main() {
   const appEl = document.getElementById("app");
+
+  await renderModeBadge();
+
   let status;
   try {
     status = await fetchJSON("/api/status");
@@ -13,7 +16,7 @@ async function main() {
     return;
   }
 
-  const sections = [renderStatusPanel(status), renderContractPanel(status)];
+  const sections = [await renderModeBanner(), renderStatusPanel(status), renderContractPanel(status)];
 
   const hasBeforeAfter = status.files.input && status.files.input.exists && status.files.sr && status.files.sr.exists;
   if (hasBeforeAfter) {
@@ -37,6 +40,27 @@ async function main() {
 
   if (hasBeforeAfter) {
     wireCompareSlider();
+  }
+}
+
+async function renderModeBadge() {
+  const badge = document.getElementById("modeBadge");
+  try {
+    const data = await fetchJSON("/api/mode");
+    badge.textContent = data.mode === "demo" ? "DEMO MODE" : data.mode.toUpperCase() + " MODE";
+    badge.classList.remove("mode-badge-hidden");
+  } catch (err) {
+    // If /api/mode is unreachable, leave the badge hidden rather than
+    // showing a wrong or misleading mode label.
+  }
+}
+
+async function renderModeBanner() {
+  try {
+    const data = await fetchJSON("/api/mode");
+    return `<div class="mode-banner">${data.description}</div>`;
+  } catch (err) {
+    return "";
   }
 }
 

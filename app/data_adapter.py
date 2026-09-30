@@ -19,6 +19,13 @@ from typing import Any, Dict, Optional
 
 import rasterio
 
+def get_app_mode(config: Dict[str, Any]) -> str:
+    """Return the dashboard's current mode ("demo" or, from Phase 16
+    onward, "live"). Defaults to "demo" if unset - the safe default, since
+    presenting cached data as if it were live is the failure mode this
+    exists to prevent (see app/README.md's Phase 15 section).
+    """
+    return config.get("app", {}).get("mode", "demo")
 
 def _demo_dir(config: Dict[str, Any]) -> Path:
     return Path(config["paths"]["demo_data"])

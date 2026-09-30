@@ -1,14 +1,16 @@
 """
-Phase 10/11/12/13/14: FastAPI dashboard.
+Phase 10-15: FastAPI dashboard.
 
-Phase 10 established the foundation. Phase 11 added before/after raster
-rendering. Phase 12 added metrics visualization with placeholder
-detection. Phase 13 added NDVI visualization. Phase 14 adds uncertainty
-visualization. This module never reads demo_data/ or data/processed/ file
-paths directly for status/metadata - it only calls app.data_adapter
-functions - but DOES call app.rendering (which reads pixel data) for the
-render endpoints, since pixel rendering is that phase's job (see
-app/README.md).
+Phase 10 established the foundation. Phases 11-14 added before/after,
+metrics, NDVI, and uncertainty visualization. Phase 15 adds explicit mode
+labeling ("demo" vs. a future "live" mode from Phase 16) so cached,
+precomputed data is never presented as if it were live processing (see
+app/README.md's Phase 15 section and the project's section 22/42
+scientific-honesty requirements). This module never reads demo_data/ or
+data/processed/ file paths directly for status/metadata - it only calls
+app.data_adapter functions - but DOES call app.rendering (which reads
+pixel data) for the render endpoints, since pixel rendering is that
+phase's job.
 
 Config path is overridable via the GEOREFINE_CONFIG environment variable
 so tests can point at an isolated temporary config without touching the
@@ -29,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.data_adapter import (
     describe_metrics,
+    get_app_mode,
     get_demo_status,
     load_ndvi_report,
     load_raster_summary,
@@ -46,6 +49,14 @@ DEFAULT_CONFIG_PATH = APP_DIR.parent / "config.yaml"
 _FALSE_COLOR_KEYS = ("input", "sr")
 _NDVI_KEYS = ("original_ndvi", "sr_ndvi")
 
+_MODE_DESCRIPTIONS = {
+    "demo": (
+        "Demo Mode: all data shown is precomputed and committed to the repository. "
+        "No live inference occurs in this view."
+    ),
+    "live": "Live Mode: results are computed from a scene provided in this session.",
+}
+
 
 def load_config() -> dict:
     config_path = Path(os.environ.get("GEOREFINE_CONFIG", str(DEFAULT_CONFIG_PATH)))
@@ -53,7 +64,14 @@ def load_config() -> dict:
         return yaml.safe_load(f)
 
 
-app = FastAPI(title="GeoRefine Dashboard", version="0.5.0")
+app = FastAPI(title="GeoRefine Dashboard", version="0.6.0")
+
+
+@app.get("/api/mode")
+def api_mode():
+    config = load_config()
+    mode = get_app_mode(config)
+    return {"mode": mode, "description": _MODE_DESCRIPTIONS.get(mode, "")}
 
 
 @app.get("/api/status")

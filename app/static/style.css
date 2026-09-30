@@ -342,3 +342,39 @@ main {
     rgb(200, 20, 20)
   );
 }
+
+
+/* Demo/Live mode indicator */
+
+.topbar-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mode-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #1a2a1a;
+  color: #6fcf6f;
+  border: 1px solid #2e4a2e;
+}
+
+.mode-badge-hidden {
+  visibility: hidden;
+}
+
+.mode-banner {
+  background: #10161d;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 10px 16px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+}
