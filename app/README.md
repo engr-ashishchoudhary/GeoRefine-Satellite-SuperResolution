@@ -372,3 +372,45 @@ is **not a calibrated confidence interval** — matching
   simple, per the project's build-simple-then-refine approach.
 - Heatmap color stops are a display choice, not tied to any specific
   uncertainty-magnitude threshold.
+
+
+## Phase 15: Demo Mode
+
+Adds `data_adapter.get_app_mode()`, a `/api/mode` endpoint, and a
+persistent "DEMO MODE" badge + banner to the dashboard.
+
+### Why this exists
+
+Per the project's Demo Mode requirements: a cached/precomputed result
+must never be presented as if it were live processing. Before this phase,
+the dashboard showed `demo_data/` contents with no indication of *what
+kind* of result they were. Now, every page load explicitly states:
+
+> Demo Mode: all data shown is precomputed and committed to the
+> repository. No live inference occurs in this view.
+
+This banner text comes from the same `/api/mode` response the badge
+reads, so the two can never disagree.
+
+### Config (`config.yaml`, additive)
+
+```yaml
+app:
+  mode: "demo"
+```
+
+Defaults to `"demo"` if unset — the safe default, since presenting cached
+data as live is the specific failure mode this phase exists to prevent.
+Phase 16 (Live Mode) will add a `"live"` counterpart alongside this, not
+replace it — both modes will coexist, with the badge/banner switching
+text based on which is active.
+
+### New endpoint
+
+- `GET /api/mode` — `{"mode": "demo", "description": "..."}`
+
+### Known limitations
+
+- There is currently no way to switch modes from the UI — Phase 16 will
+  add the live-mode workflow (scene upload + inference) this badge is
+  designed to distinguish from.
