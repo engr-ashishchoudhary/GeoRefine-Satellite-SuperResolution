@@ -414,3 +414,60 @@ text based on which is active.
 - There is currently no way to switch modes from the UI — Phase 16 will
   add the live-mode workflow (scene upload + inference) this badge is
   designed to distinguish from.
+
+
+## Phase 16: Live Mode Interface
+
+Adds `app/live_inference.py` (the only module in `app/` that actually
+invokes the model) and a Live Inference panel with file upload.
+
+### Workflow
+
+1. User uploads a single GeoTIFF with at least 2 bands (band 1 = red,
+   band 2 = nir — the same convention used throughout `src/`).
+2. The server runs the real pretrained model on it via
+   `src.inference.scene_inference.run_tiled_inference()` — the same
+   tiling/blending core Phases 5-9 use, not new inference logic.
+3. Result is shown as a before/after slider, labeled **LIVE** (blue
+   badge) — visually distinct from the green **DEMO MODE** badge in the
+   header, so the two are never confused.
+
+### New endpoints
+
+- `POST /api/live/infer` — accepts a file upload, runs inference, returns
+  `{"input_path", "sr_path", "scene_shape", "sr_shape", "original_filename"}`.
+  `400` for an invalid upload (wrong band count, unreadable file); `503`
+  if the pretrained checkpoint isn't available.
+- `GET /api/live/status` — `{"available": bool, "result": {...}|null}`.
+- `GET /api/live/render/{input|sr}` — PNG of the most recent live result.
+  `404` if no live inference has been run yet.
+
+### Config (`config.yaml`, additive)
+
+```yaml
+live:
+  upload_dir: "data/live/uploads"
+  output_dir: "data/live/outputs"
+```
+
+`data/live/` is gitignored — these are runtime uploads/outputs, not
+source.
+
+### Dependencies added
+
+- `python-multipart` — required by FastAPI to parse file uploads.
+
+### Known limitations (documented, not silently skipped)
+
+- **Single in-memory result, not per-session.** Only the most recent live
+  upload is held; a second upload (by the same or a different visitor)
+  overwrites it. This is a prototype-scope simplification for a
+  single-process localhost dashboard.
+- **No NDVI or uncertainty for live uploads** — only before/after SR, kept
+  deliberately small per the project's "reliable small demo over large
+  unreliable system" principle.
+- **Model loaded once and cached** in a module-level variable, not
+  reloaded per request — correct for a single long-running server process.
+- Only exercised with a tiny untrained test model and synthetic GeoTIFFs
+  so far — not yet run against the real pretrained checkpoint with real
+  Sentinel-2 imagery.
