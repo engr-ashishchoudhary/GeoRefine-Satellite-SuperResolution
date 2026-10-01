@@ -1,16 +1,17 @@
 """
-Phase 10-15: FastAPI dashboard.
+Phase 10-16: FastAPI dashboard.
 
 Phase 10 established the foundation. Phases 11-14 added before/after,
-metrics, NDVI, and uncertainty visualization. Phase 15 adds explicit mode
-labeling ("demo" vs. a future "live" mode from Phase 16) so cached,
-precomputed data is never presented as if it were live processing (see
-app/README.md's Phase 15 section and the project's section 22/42
-scientific-honesty requirements). This module never reads demo_data/ or
-data/processed/ file paths directly for status/metadata - it only calls
-app.data_adapter functions - but DOES call app.rendering (which reads
-pixel data) for the render endpoints, since pixel rendering is that
-phase's job.
+metrics, NDVI, and uncertainty visualization. Phase 15 added demo/live
+mode labeling. Phase 16 adds the actual live-inference workflow: upload a
+scene, run real SR inference on it, view the result - clearly labeled
+"LIVE" so it is never confused with the "DEMO MODE" badge, which still
+describes the precomputed demo_data/ content shown elsewhere on the page.
+
+This module never reads demo_data/ or data/processed/ file paths directly
+for status/metadata - it only calls app.data_adapter functions - and
+calls app.rendering for pixel-to-PNG rendering, and app.live_inference for
+the one workflow that actually runs the model.
 
 Config path is overridable via the GEOREFINE_CONFIG environment variable
 so tests can point at an isolated temporary config without touching the
@@ -23,7 +24,7 @@ import sys
 from pathlib import Path
 
 import yaml
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -37,6 +38,7 @@ from app.data_adapter import (
     load_raster_summary,
     load_uncertainty_report,
 )
+from app.live_inference import get_live_result, run_live_inference
 from app.rendering import (
     render_ndvi_raster_file_as_png,
     render_raster_file_as_png,
@@ -64,7 +66,7 @@ def load_config() -> dict:
         return yaml.safe_load(f)
 
 
-app = FastAPI(title="GeoRefine Dashboard", version="0.6.0")
+app = FastAPI(title="GeoRefine Dashboard", version="0.7.0")
 
 
 @app.get("/api/mode")
@@ -176,6 +178,49 @@ def api_render_uncertainty():
 
     try:
         png_bytes = render_uncertainty_raster_file_as_png(raster_path, low, high)
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    return Response(content=png_bytes, media_type="image/png")
+
+
+@app.post("/api/live/infer")
+async def api_live_infer(file: UploadFile = File(...)):
+    config = load_config()
+    contents = await file.read()
+    try:
+        result = run_live_inference(contents, file.filename, config)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return result
+
+
+@app.get("/api/live/status")
+def api_live_status():
+    result = get_live_result()
+    return {"available": result["sr_path"] is not None, "result": result if result["sr_path"] else None}
+
+
+@app.get("/api/live/render/{key}")
+def api_live_render(key: str):
+    if key not in _FALSE_COLOR_KEYS:
+        raise HTTPException(status_code=404, detail=f"Unknown render key '{key}'. Expected one of {_FALSE_COLOR_KEYS}")
+
+    result = get_live_result()
+    path_key = "input_path" if key == "input" else "sr_path"
+    raster_path = result.get(path_key)
+    if not raster_path or not Path(raster_path).exists():
+        raise HTTPException(status_code=404, detail="No live result available yet. Upload a scene first.")
+
+    config = load_config()
+    viz_cfg = config.get("visualization", {})
+    low = viz_cfg.get("stretch_low_percentile", 2.0)
+    high = viz_cfg.get("stretch_high_percentile", 98.0)
+
+    try:
+        png_bytes = render_raster_file_as_png(raster_path, low, high)
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 

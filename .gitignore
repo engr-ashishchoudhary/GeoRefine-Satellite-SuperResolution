@@ -21,6 +21,7 @@ data/raw/*
 data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+data/live/
 
 # Model weights (large binaries)
 models/*.pth

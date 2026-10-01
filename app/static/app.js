@@ -36,11 +36,14 @@ async function main() {
     sections.push(await renderUncertaintyPanel());
   }
 
+  sections.push(renderLiveInferencePanel());
+
   appEl.innerHTML = sections.join("");
 
   if (hasBeforeAfter) {
     wireCompareSlider();
   }
+  wireLiveInferenceForm();
 }
 
 async function renderModeBadge() {
@@ -310,6 +313,96 @@ async function renderUncertaintyPanel() {
       ${noteLine}
     </div>
   `;
+}
+
+function renderLiveInferencePanel() {
+  return `
+    <div class="panel">
+      <h2>Live Inference <span class="mode-badge mode-badge-live">LIVE</span></h2>
+      <p class="compare-meta">
+        Upload your own GeoTIFF with at least 2 bands (band 1 = red, band 2 = nir) to run
+        the real pretrained model on it now. This is a genuine inference run performed in
+        this session, not precomputed demo data.
+      </p>
+      <form id="liveUploadForm" class="live-upload-form">
+        <input type="file" id="liveFileInput" accept=".tif,.tiff" required />
+        <button type="submit" id="liveSubmitBtn">Run Inference</button>
+      </form>
+      <div id="liveResultContainer"></div>
+    </div>
+  `;
+}
+
+function wireLiveInferenceForm() {
+  const form = document.getElementById("liveUploadForm");
+  if (!form) return;
+
+  const resultContainer = document.getElementById("liveResultContainer");
+  const submitBtn = document.getElementById("liveSubmitBtn");
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fileInput = document.getElementById("liveFileInput");
+    if (!fileInput.files.length) return;
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Running inference...";
+    resultContainer.innerHTML = `<p class="empty-state">Running the pretrained model on your upload - this may take a moment...</p>`;
+
+    const formData = new FormData();
+    formData.append("file", fileInput.files[0]);
+
+    try {
+      const res = await fetch("/api/live/infer", { method: "POST", body: formData });
+      if (!res.ok) {
+        const err = await res.json();
+        resultContainer.innerHTML = `<p class="empty-state">Error: ${err.detail || "inference failed"}</p>`;
+        return;
+      }
+      const result = await res.json();
+      const cacheBust = Date.now();
+      resultContainer.innerHTML = `
+        <p class="compare-meta">
+          File: ${result.original_filename} — LR shape: ${result.scene_shape.join("×")},
+          SR shape: ${result.sr_shape.join("×")}
+        </p>
+        <div class="compare-wrap" id="liveCompareWrap">
+          <img src="/api/live/render/sr?t=${cacheBust}" alt="Live SR output" />
+          <div class="compare-before-layer" id="liveBeforeLayer">
+            <img id="liveBeforeImg" src="/api/live/render/input?t=${cacheBust}" alt="Live LR input" />
+          </div>
+          <div class="compare-divider" id="liveDivider"></div>
+        </div>
+        <input type="range" class="compare-slider" id="liveSlider" min="0" max="100" value="50" />
+        <div class="compare-labels"><span>Before (your upload)</span><span>After (live SR)</span></div>
+      `;
+      wireLiveCompareSlider();
+    } catch (err) {
+      resultContainer.innerHTML = `<p class="empty-state">Request failed: ${err}</p>`;
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Run Inference";
+    }
+  });
+}
+
+function wireLiveCompareSlider() {
+  const slider = document.getElementById("liveSlider");
+  const beforeLayer = document.getElementById("liveBeforeLayer");
+  const divider = document.getElementById("liveDivider");
+  const wrap = document.getElementById("liveCompareWrap");
+  const beforeImg = document.getElementById("liveBeforeImg");
+
+  function setWidth() {
+    beforeImg.style.width = `${wrap.clientWidth}px`;
+  }
+  setWidth();
+  window.addEventListener("resize", setWidth);
+
+  slider.addEventListener("input", () => {
+    beforeLayer.style.width = `${slider.value}%`;
+    divider.style.left = `${slider.value}%`;
+  });
 }
 
 main();

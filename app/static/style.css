@@ -378,3 +378,43 @@ main {
   border-radius: 4px;
   margin-bottom: 20px;
 }
+
+
+/* Live inference panel */
+
+.mode-badge-live {
+  background: #10243a;
+  color: #4fa8e8;
+  border: 1px solid #1d3f61;
+  margin-left: 10px;
+  font-size: 10px;
+  vertical-align: middle;
+}
+
+.live-upload-form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 14px 0;
+}
+
+.live-upload-form input[type="file"] {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.live-upload-form button {
+  background: var(--accent);
+  color: #05080b;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.live-upload-form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

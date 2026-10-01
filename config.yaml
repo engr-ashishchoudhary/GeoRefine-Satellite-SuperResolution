@@ -76,3 +76,7 @@ visualization:
   stretch_high_percentile: 98.0
   ndvi_min: -1.0
   ndvi_max: 1.0
+
+live:
+  upload_dir: "data/live/uploads"
+  output_dir: "data/live/outputs"
